@@ -5,39 +5,17 @@ output:
     keep_md: true
 ---
 
-### To get a raster of distance to coastline
-from an [answer](https://stackoverflow.com/questions/35555709/global-raster-of-geographic-distances "Global Raster of Geographic Distances") on StackOverflow.
-
-```{r}
-library(raster)
-library(maptools)
-data(wrld_simpl)
-
-# Create a raster template for rasterizing the polygons. 
-# (set the desired grid resolution with res)
-r <- raster(xmn=-180, xmx=180, ymn=-90, ymx=90, res=1)
-
-# Rasterize and set land pixels to NA
-r2 <- rasterize(wrld_simpl, r, 1)
-r3 <- mask(is.na(r2), r2, maskvalue=1, updatevalue=NA)
-
-# Calculate distance to nearest non-NA pixel
-d <- distance(r3)
-
-plot(d)
-```
-
 I got the soil salinity data here, from the [ISRIC Data Hub.](https://data.isric.org/geonetwork/srv/eng/catalog.search#/metadata/ca880bd4-cff8-11e9-8046-0cc47adaa92c "WoSIS snapshot: September 2019")
 
 The _Capsella bursa-pastoris_ occurences were downloaded from iNaturalist.
 
 ### iNaturalist data and global soil chemical profiles
-```{r}
+```{r load_data}
 # read inaturalist data
-obs <- read.csv("~/Documents/Josephs_lab/worldwide_salt_analysis/cbp-observations-81425.csv")
+obs <- read.csv("~/Documents/Josephs_lab/salt_datasets_Rdata_images/cbp-observations-81425.csv")
 
 # read soil profile data
-profiles <- read.delim("~/Documents/Josephs_lab/worldwide_salt_analysis/wosis_201909_profiles.tsv")
+profiles <- read.delim("~/Documents/Josephs_lab/salt_datasets_Rdata_images/wosis_201909_profiles.tsv")
 
 # read chemical data
 #chem <- read.delim("~/Documents/Josephs_lab/worldwide_salt_analysis/wosis_201909_layers_chemical.tsv")
@@ -49,14 +27,14 @@ profiles <- read.delim("~/Documents/Josephs_lab/worldwide_salt_analysis/wosis_20
 profiles_drop <- profiles[ , c("profile_id", "latitude", "longitude")]
 ```
 
-#### My brain needs pictures
+#### Plotting iNaturalist Observations of _Capsella bursa-pastoris_
 
-```{r, }
+```{r plot_obs}
 library("ggplot2")
 theme_set(theme_bw())
 library("sf")
 library("rnaturalearth")
-library("rnaturalearthdata")
+#library("rnaturalearthdata")
 
 world <- ne_countries(scale = "medium", returnclass = "sf")
 class(world)
@@ -67,99 +45,22 @@ ggplot(data = world) +
         shape = 23, fill = "darkred") 
 ```
 
-The same plot but with the soil points on top because I wanted to see the levelf of overlap between the two.
-```{r}
+The same plot but with the soil points on top because I wanted to see the level of overlap between the two.
+```{r obs_soil_plot}
 wsalt <- ggplot(data = world) +
     geom_sf() + geom_point(data = obs, aes(x = longitude, y = latitude), size = 1.5, 
-        shape = 23, fill = "darkred") + geom_point(data = profiles_drop, aes(x = longitude, y = latitude), size = 1, alpha = 0.3, fill = "skyblue4")
+        shape = 23, fill = "darkred") + geom_point(data = profiles_drop, aes(x = longitude, y = latitude), size = 1, alpha = 0.1, fill = "skyblue4")
 
 wsalt
 ```
+There are many, many more soil data points than iNaturalist observations but they mostly overlap.
 
-I abandonded this idea for the time being and decided I would try maxent.
+### Measuring distance from coast for each iNaturalist observation.
+Found [a tutorial](https://dominicroye.github.io/en/2019/calculating-the-distance-to-the-sea-in-r/ "Calculating Distance to the sea in R") on making a raster file of distance from coastlines. The tutorial uses a "fishnet" of points, and works really well for small countries but not all land masses. Instead of a fishnet of points, maybe I can use the observation points of _C. bursa-pastoris_.
 
-### MAXENT
-```{r}
-# I think I need all of these packages?
-library(raster)
-library(rgdal)
-library(maps)
-library(mapdata)
-library(dismo)  
-library(lubridate)
-library(ggmap)
-library(ggplot2)
-library(maptools)
-library(dplyr)
-library(sf)
-#library(rJava)
-```
 
-The shapefile of coastlines comes from [here.](https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-coastline/) (Also, I just realized i could probably get it directly from the rnaturalearth package.)
-
-Loosely following [this tutorial.](https://cmerow.github.io/RDataScience/3_6_Teaching_Ecoinformatics.html) which is pretty much the same as the R documentation for MAXENT.
-
-```{r}
-# get rid of inaturalist observations without location information
-cbp=subset(obs, !is.na(longitude) & !is.na(latitude))
-
-# find and eliminate duplicate locations
-cbpdups=duplicated(cbp[, c("longitude", "latitude")])
-cbp_nodups <-cbp[!cbpdups, ]
-
-# withold 20% of the data for testing the model
-occr=cbind.data.frame(cbp_nodups$longitude,cbp_nodups$latitude)
-fold <- kfold(occr, k=5)
-cbptest <- occr[fold == 1, ]
-cbptrain <- occr[fold != 1, ]
-```
-
-I end up not using this shapefile of coastlines (in the next code chunk) because the shapes are not polygons but linestrings and I was not sure what to do with it.
+__NOTE:__ I am suspicious that the transformation step in the following chunk it wrong, so the code is not run in creating the markdown. Specifically, I dont think the shapefile actually has its points translated into UTM.
 ```{r, eval= FALSE}
-# load coastline shape file
-coasts <- st_read("~/Downloads/ne_10m_coastline/ne_10m_coastline.shp")
-
-# view metadata
-coasts
-
-# plot the shape datafile as a sanity check.
-ggplot() + 
-  geom_sf(data = coasts, size = 3, color = "black", fill = "cyan1") +
-  ggtitle("Coast Shape Data") + 
-  coord_sf()
-```
-Yup, looks like coastlines.
-
-
-```{r, eval= FALSE}
-# fit MAXENT model to training set
-# d is the raster of distance from coast created earlier
-cbp.me <- maxent(d, cbptrain)
-
-```
-Above code chunk causes this error:
-
-Error in match.names(clabs, names(xi)) : 
-  names do not match previous names
-
-There is an issue with making a MaxEnt model with only one predictor (distance to coastline, in this case.)
-Workaround from StackOverflow [answer](https://stackoverflow.com/questions/47599192/maxent-error-in-match-namesclabs-namesxi-names-do-not-match-previous-nam).
-
-```{r, eval= FALSE}
-# notice the dropped matrix
-extract(d[[1]], cbptrain[1:2,])
-
-# create a raster stack with the single layer
-prd <- stack(d[[1]])
-cbp.me <- maxent(x=prd, p =cbptrain)
-```
-
-...and error.
-
-### Trying something else.
-Found [a tutorial](https://dominicroye.github.io/en/2019/calculating-the-distance-to-the-sea-in-r/ "Calculating Distance to the sea in R") on making a raster file of distance from coastlines. The tutorial uses a "fishnet" of points, and works really well for small countries but not all land masses. Instead of a fishnet of points, maybe I can use the observation points of _C. b-p_
-
-```{r}
 # Load necessary packages
 library(rnaturalearth)
 library(sf)
@@ -194,6 +95,7 @@ dist <- st_distance(world, cbpmap)
 #distance with unit in meters
 head(dist)
 ```
+
 #### Plotting distance from coast
 
 I haven't gotten this chunk to plot properly yet.
@@ -222,34 +124,7 @@ ggplot(df, aes(X, Y, fill = dist))+ #variables
               theme(legend.position = "bottom") #legend position
 ```
 
-
-
-### The Java Thing
-I can load the rJava package just fine.
-```{r, eval= FALSE}
-install.packages("rJava")
-```
-
-But, if I try to load the library to use it...
-```{r, eval= FALSE}
-library(rJava)
-```
-I get this Error:
-
-Error: package or namespace load failed for ‘rJava’:
- .onLoad failed in loadNamespace() for 'rJava', details:
-  call: dyn.load(file, DLLpath = DLLpath, ...)
-  error: unable to load shared object '/Library/Frameworks/R.framework/Versions/3.5/Resources/library/rJava/libs/rJava.so':
-  dlopen(/Library/Frameworks/R.framework/Versions/3.5/Resources/library/rJava/libs/rJava.so, 6): Library not loaded: /Library/Java/JavaVirtualMachines/jdk-11.0.1.jdk/Contents/Home/lib/server/libjvm.dylib
-  Referenced from: /Library/Frameworks/R.framework/Versions/3.5/Resources/library/rJava/libs/rJava.so
-  Reason: no suitable image found.  Did find:
-	/Library/Java/JavaVirtualMachines/1.6.0.jdk/Contents/Libraries/libjvm.dylib: mach-o, but wrong architecture
-	/Library/Java/JavaVirtualMachines/1.6.0.jdk/Contents/Libraries/libclient.dylib: mach-o, but wrong architecture
-In addition: Warning message:
-package ‘rJava’ was built under R version 3.5.2 
-
-
-### In case I can't figure out the Java issue...
+### WOSIS chemical profiles
 The soil dataset does not explicitly list salinity so I am going to use electrical conductivity which [may be okay.](https://www.nrcs.usda.gov/Internet/FSE_DOCUMENTS/nrcs142p2_053280.pdf)
 
 [Appendix A](https://www.earth-syst-sci-data.net/12/299/2020/ "Appendix A") gives the definitions of the values.

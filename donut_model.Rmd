@@ -1,0 +1,101 @@
+---
+title: "The Donut Model"
+author: "MayaWB"
+date: "5/1/2020"
+output: html_document
+---
+```{r}
+library(raster)
+library(maptools)
+data(wrld_simpl)
+
+# Create a raster template for rasterizing the polygons. 
+# (set the desired grid resolution with res)
+r <- raster(xmn=-180, xmx=180, ymn=-60, ymx=90, res=2.5)
+
+# Rasterize and set land pixels to NA
+r2 <- rasterize(wrld_simpl, r, 1)
+r3 <- mask(is.na(r2), r2, maskvalue=1, updatevalue=NA)
+
+# Calculate distance to nearest non-NA pixel
+d <- distance(r3)
+```
+
+
+
+```{r create_donut}
+# Load necessary libraries
+library(rnaturalearth)
+library(sf)
+library(rgdal)
+library(sp)
+
+# Obtain simple feature of land masses
+#land50 <- ne_download(scale = 50, type = 'land', category = 'physical', returnclass = 'sf')
+land110 <- ne_download(scale = 110, type = 'land', category = 'physical', returnclass = 'sf')
+
+# Make sure the object is of the correct class
+#land_sfc = st_geometry(land50)
+land_sfg = st_geometry(land110)
+
+# Correct CRS
+#land_sfc <- st_transform(land_sfc, 4326)
+land_sfg <- st_transform(land_sfg, 4326)
+#land_sfg <- st_transform(land_sfg, "+proj=utm +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+
+#land_centroid_sfc = st_centroid(land_sfc)
+land_centroid_sfc1 = st_centroid(land_sfc)
+land_cent = st_centroid(land_sfg)
+
+#land_scale = (land_sfc - land_centroid_sfc) * 0.5 + land_centroid_sfc
+
+land_scale = (land_sfg - land_cent) * (1- 0.00309107671) + land_cent
+
+#st_crs(land_scale) = 4326
+st_crs(land_scale) = 32601
+
+#don = st_sym_difference(land_sfc, land_scale1)
+don = st_sym_difference(land_sfg, land_scale)
+
+plot(land110)
+plot(don, col = "lightgrey", add = TRUE) # color intersecting area
+
+
+ST_AsText(ST_Transform(ST_SetSRID(the_geom, 3400), 4326)))
+```
+NOTE: ST_as_sf does not change the polygon intersection error.
+```{r, eval=FALSE}
+#EXAMPLE
+test_land_sf = st_as_sf(land_sfg, crs = 4326)
+scaled_land_test = st_as_sf(land_scale, crs= 4326)
+
+don = st_sym_difference(test_land_sf, scaled_land_test)
+```
+Above code chunk produces the following error.
+Error in CPL_geos_op2(op, st_geometry(x), st_geometry(y)) : 
+  Evaluation error: TopologyException: Input geom 0 is invalid: Ring Self-intersection at or near point -132.71000788443121 54.040009315423447 at -132.71000788443121 54.040009315423447.
+
+help from : <https://www.earthdatascience.org/courses/earth-analytics/spatial-data-r/reproject-vector-data/>
+```{r}
+worldmap <- ne_countries(scale = "small", returnclass = "sf")
+coast <- ne_coastline(scale = "small", returnclass = "sf")
+nz_sfc = st_geometry(worldmap)
+
+nz_centroid_sfc = st_centroid(nz_sfc)
+
+nz_scale = (nz_sfc - nz_centroid_sfc) * 0.5 + nz_centroid_sfc
+
+nz_scale_sf = st_set_geometry(worldmap, nz_scale)
+```
+
+```{r}
+#This does not work
+test_land_sf = st_as_sf(land_sfg, crs = 4326)
+scaled_land_test = st_as_sf(land_scale, crs= 4326)
+
+#what the projection should be
+#+proj=utm +zone=11 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0
+```
+
+
